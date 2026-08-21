@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SpendTracker Pro — Household Financial Intelligence</title>
+  <meta name="description" content="Industry-grade household financial analytics with AI-powered insights, PDF statement parsing, and multi-bank tracking." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="/static/css/styles.css?v=2.1.2" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+<!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-logo">
+    <span class="logo-icon">💎</span>
+    <h1>SpendTracker Pro</h1>
+    <p>Household Financial Intelligence</p>
+  </div>
+
+  <span class="nav-section">Analytics</span>
+  <a class="nav-item active" data-page="dashboard" href="#dashboard" id="nav-dashboard">
+    <span class="nav-icon">📊</span> Dashboard
+  </a>
+  <a class="nav-item" data-page="insights" href="#insights" id="nav-insights">
+    <span class="nav-icon">⚡</span> Insights
+  </a>
+  <a class="nav-item" data-page="ledger" href="#ledger" id="nav-ledger">
+    <span class="nav-icon">📋</span> Ledger
+  </a>
+
+  <span class="nav-section">Data</span>
+  <a class="nav-item" data-page="upload" href="#upload" id="nav-upload">
+    <span class="nav-icon">📤</span> Upload Statements
+  </a>
+  <a class="nav-item" data-page="members" href="#members" id="nav-members">
+    <span class="nav-icon">👥</span> Members & Banks
+  </a>
+  <a class="nav-item" data-page="rules" href="#rules" id="nav-rules">
+    <span class="nav-icon">🏷️</span> Rules & Categories
+  </a>
+
+  <span class="nav-section">Intelligence</span>
+  <a class="nav-item" data-page="ai" href="#ai" id="nav-ai">
+    <span class="nav-icon">🤖</span> AI Assistant
+  </a>
+
+  <span class="nav-section">System</span>
+  <a class="nav-item" data-page="settings" href="#settings" id="nav-settings">
+    <span class="nav-icon">⚙️</span> Settings
+  </a>
+
+  <div class="sidebar-footer">
+    <span class="status-pill pill-blue" id="db-pill">⚡ Local Mode</span>
+    <span class="status-pill pill-green" id="api-pill" style="margin-top:6px;display:none">🔑 API Active</span>
+  </div>
+</aside>
+
+<!-- ── Main Content ──────────────────────────────────────────────────────── -->
+<main class="main" id="main-content">
+  <div id="page-root"></div>
+</main>
+
+<!-- ── Toast Container ───────────────────────────────────────────────────── -->
+<div id="toast-container"></div>
+
+<!-- ── Scripts ──────────────────────────────────────────────────────────── -->
+<script src="/static/js/utils.js?v=2.1.2"></script>
+<script src="/static/js/api.js?v=2.1.2"></script>
+<script src="/static/js/pages/dashboard.js?v=2.1.2"></script>
+<script src="/static/js/pages/insights.js?v=2.1.2"></script>
+<script src="/static/js/pages/ledger.js?v=2.1.2"></script>
+<script src="/static/js/pages/upload.js?v=2.1.2"></script>
+<script src="/static/js/pages/members.js?v=2.1.2"></script>
+<script src="/static/js/pages/rules.js?v=2.1.2"></script>
+<script src="/static/js/pages/ai-chat.js?v=2.1.2"></script>
+<script src="/static/js/pages/settings.js?v=2.1.2"></script>
+<script src="/static/js/app.js?v=2.1.2"></script>
+</body>
+</html>
