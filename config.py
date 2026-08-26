@@ -1,4 +1,8 @@
 import os
+from dotenv import load_dotenv
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, ".env"), override=True)
 
 APP_TITLE = "SpendTracker Pro"
 APP_SUBTITLE = "Industry-Grade Household Financial Intelligence Platform"
@@ -7,7 +11,7 @@ APP_SUBTITLE = "Industry-Grade Household Financial Intelligence Platform"
 ENV_API_KEY = os.getenv("API_KEY", "")
 ENV_GCP_PROJECT = os.getenv("GCP_PROJECT", "")
 ENV_DATASET_ID = os.getenv("DATASET_ID", "spend_tracker")
-ENV_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+ENV_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 
 # Color Palette
 COLORS = {
@@ -48,7 +52,8 @@ DEFAULT_CATEGORIES = [
     {"id": 7, "name": "Entertainment & Subscriptions", "group": "Lifestyle", "icon": "🎬"},
     {"id": 8, "name": "Healthcare & Wellness", "group": "Essentials", "icon": "🏥"},
     {"id": 9, "name": "Financials, EMI & Investments", "group": "Financial", "icon": "📈"},
-    {"id": 10, "name": "Uncategorized / Other", "group": "Other", "icon": "📦"}
+    {"id": 10, "name": "Uncategorized / Other", "group": "Other", "icon": "📦"},
+    {"id": 11, "name": "Credit Card Payments", "group": "Financial", "icon": "💳"}
 ]
 
 DEFAULT_CARDS = [

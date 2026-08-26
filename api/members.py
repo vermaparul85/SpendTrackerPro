@@ -20,10 +20,28 @@ async def add_member(body: dict):
     db.add_member(name, role, color)
     return {"success": True}
 
+@router.patch("/{member_id}")
+async def update_member(member_id: int, body: dict):
+    name = (body.get("name") or "").strip()
+    role = (body.get("role") or "Member").strip()
+    color = body.get("color")
+
+    if not name:
+        return JSONResponse(status_code=400, content={"error": "Name is required"})
+
+    try:
+        db.update_member(member_id, name, role, color)
+        return {"success": True}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
 @router.delete("/{member_id}")
 async def delete_member(member_id: int):
-    db.delete_member(member_id)
-    return {"success": True}
+    try:
+        db.delete_member(member_id)
+        return {"success": True}
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
 
 # ── Banks ─────────────────────────────────────────────────────────────────────
 @router.get("/banks")

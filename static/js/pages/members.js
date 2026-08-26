@@ -8,7 +8,7 @@ async function renderMembers() {
   const root = document.getElementById('page-root');
   root.innerHTML = `
     <div class="page-header fade-in">
-      <h2>👥 Members & Banks</h2>
+      <h2>👥 Family Members & Banks</h2>
       <p>Manage household members, bank accounts, and linked cards auto-synced from statements</p>
     </div>
     <div class="page-content fade-in">
@@ -29,6 +29,20 @@ async function renderMembers() {
             <div style="display:flex;gap:8px">
               <button class="btn btn-primary btn-sm" onclick="submitAddMember()">Save Member</button>
               <button class="btn btn-secondary btn-sm" onclick="document.getElementById('add-member-form').style.display='none'">Cancel</button>
+            </div>
+          </div>
+
+          <div id="edit-member-form" style="display:none;margin-top:16px;padding:16px;background:rgba(79,142,255,0.06);border:1px solid rgba(79,142,255,0.25);border-radius:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div style="font-weight:700;color:var(--blue)">✏️ Update Member</div>
+              <span id="edit-member-badge" style="font-size:.75rem;font-family:var(--mono);color:var(--text-3)"></span>
+            </div>
+            <div class="form-group"><label>Full Name</label><input type="text" id="edit-m-name" placeholder="e.g. Priya Sharma"></div>
+            <div class="form-group"><label>Role</label><input type="text" id="edit-m-role" placeholder="e.g. Primary Earner / Spouse"></div>
+            <div class="form-group"><label>Avatar Color</label><input type="color" id="edit-m-color" value="#4F8EFF" style="width:60px;height:36px;padding:2px;cursor:pointer"></div>
+            <div style="display:flex;gap:8px;margin-top:10px">
+              <button class="btn btn-primary btn-sm" onclick="submitEditMember()">Save Changes</button>
+              <button class="btn btn-secondary btn-sm" onclick="cancelEditMember()">Cancel</button>
             </div>
           </div>
         </div>
@@ -132,15 +146,25 @@ async function loadMembers() {
     const el = document.getElementById('members-list');
     if (!el) return;
     if (!_membersData.length) { el.innerHTML = '<p style="color:var(--text-3);font-size:.85rem">No members found.</p>'; return; }
-    el.innerHTML = _membersData.map(m => `
-      <div class="member-card" style="margin-bottom:10px">
-        <div class="member-avatar" style="background:${m.avatar_color||'#4F8EFF'}">${(m.member_name||'?')[0]}</div>
-        <div style="flex:1">
-          <div style="font-weight:600;color:var(--text-1)">${escapeHtml(m.member_name)}</div>
-          <div style="font-size:.78rem;color:var(--text-3)">${escapeHtml(m.role)}</div>
-        </div>
-        <button class="btn btn-danger btn-sm" onclick="deleteMember(${m.member_id},'${escapeHtml(m.member_name)}')">🗑️</button>
-      </div>`).join('');
+    el.innerHTML = _membersData.map(m => {
+      const txCount = Number(m.transaction_count || 0);
+      const canDelete = txCount === 0;
+      return `
+        <div class="member-card" style="margin-bottom:10px">
+          <div class="member-avatar" style="background:${m.avatar_color||'#4F8EFF'}">${(m.member_name||'?')[0]}</div>
+          <div style="flex:1">
+            <div style="font-weight:600;color:var(--text-1)">${escapeHtml(m.member_name)}</div>
+            <div style="font-size:.78rem;color:var(--text-3)">${escapeHtml(m.role)}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <button class="btn btn-secondary btn-sm" onclick="showEditMember(${m.member_id})" title="Edit member details" style="padding:4px 8px">✏️</button>
+            ${txCount > 0
+              ? `<button class="btn btn-secondary btn-sm" disabled style="opacity:0.35;cursor:not-allowed" title="Cannot delete: ${txCount} transaction${txCount !== 1 ? 's' : ''} linked to this member">🔒</button>`
+              : `<button class="btn btn-danger btn-sm" onclick="deleteMember(${m.member_id},'${escapeHtml(m.member_name)}')">🗑️</button>`
+            }
+          </div>
+        </div>`;
+    }).join('');
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -199,8 +223,54 @@ async function submitAddMember() {
   } catch (e) { toast(e.message, 'error'); }
 }
 
+let _editingMemberId = null;
+
+function showEditMember(memberId) {
+  document.getElementById('add-member-form').style.display = 'none';
+  const member = _membersData.find(m => Number(m.member_id) === Number(memberId));
+  if (!member) return;
+
+  _editingMemberId = Number(memberId);
+  const form = document.getElementById('edit-member-form');
+  form.style.display = 'block';
+  document.getElementById('edit-member-badge').textContent = `ID: ${memberId}`;
+  document.getElementById('edit-m-name').value = member.member_name || '';
+  document.getElementById('edit-m-role').value = member.role || 'Member';
+  document.getElementById('edit-m-color').value = member.avatar_color || '#4F8EFF';
+  document.getElementById('edit-m-name').focus();
+}
+
+function cancelEditMember() {
+  _editingMemberId = null;
+  document.getElementById('edit-member-form').style.display = 'none';
+}
+
+async function submitEditMember() {
+  if (!_editingMemberId) return;
+
+  const name = document.getElementById('edit-m-name').value.trim();
+  const role = document.getElementById('edit-m-role').value.trim();
+  const color = document.getElementById('edit-m-color').value;
+
+  if (!name) { toast('Name is required', 'warning'); return; }
+
+  try {
+    await API.patch(`/api/members/${_editingMemberId}`, { name, role, color });
+    toast('Member updated successfully!', 'success');
+    cancelEditMember();
+    await loadMembers();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
 async function deleteMember(id, name) {
-  if (!confirm(`Remove ${name} from the household? Their transactions will be reassigned.`)) return;
+  const member = _membersData.find(m => Number(m.member_id) === Number(id));
+  const txCount = Number(member?.transaction_count || 0);
+  if (txCount > 0) {
+    toast(`Cannot delete ${name}: ${txCount} transaction${txCount !== 1 ? 's are' : ' is'} linked to this member.`, 'warning');
+    return;
+  }
+
+  if (!confirm(`Remove ${name} from the household?`)) return;
   try {
     await API.delete(`/api/members/${id}`);
     toast(`${name} removed`, 'success');

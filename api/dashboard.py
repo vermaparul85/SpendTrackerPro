@@ -83,6 +83,9 @@ async def get_charts(
     df_filtered, df_all, start, end = _get_filtered_df(start_date, end_date, member_id, bank_id)
     return {
         "category_donut": analytics.get_category_chart_data(df_filtered),
+        "member_share_donut": analytics.get_member_share_chart_data(df_filtered),
+        "bank_share_donut": analytics.get_bank_share_chart_data(df_filtered),
+        "category_monthly_line": analytics.get_category_monthly_trend_data(df_all if not (start_date or end_date) else df_filtered),
         "monthly_trend": analytics.get_monthly_trend_data(df_all if not (start_date or end_date) else df_filtered),
         "high_value": analytics.get_high_value_transactions(df_filtered),
         "date_range": {"start": start, "end": end}

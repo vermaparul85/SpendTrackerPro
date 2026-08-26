@@ -12,6 +12,27 @@ class HouseholdAnalytics:
     """Pure-data analytics layer. All chart rendering is done in JS/Chart.js."""
 
     @staticmethod
+    def _filter_out_credit_card_payments(df_tx: pd.DataFrame) -> pd.DataFrame:
+        if df_tx is None or df_tx.empty:
+            return df_tx
+
+        filtered = df_tx.copy()
+        excluded = pd.Series(False, index=filtered.index)
+
+        if "category_name" in filtered.columns:
+            excluded |= filtered["category_name"].fillna("").astype(str).str.lower().eq("credit card payments")
+
+        text_cols = [c for c in ["merchant_description", "clean_merchant", "category_name"] if c in filtered.columns]
+        for col in text_cols:
+            excluded |= filtered[col].fillna("").astype(str).str.lower().str.contains(
+                r"credit card payment|cred payment|credit card bill",
+                regex=True,
+                na=False,
+            )
+
+        return filtered[~excluded]
+
+    @staticmethod
     def get_summary_metrics(df_tx: pd.DataFrame) -> Dict[str, Any]:
         if df_tx.empty:
             return {
@@ -28,7 +49,7 @@ class HouseholdAnalytics:
             }
 
         df_debits = df_tx[df_tx["transaction_type"] == "Debit"]
-        df_credits = df_tx[df_tx["transaction_type"] == "Credit"]
+        df_credits = HouseholdAnalytics._filter_out_credit_card_payments(df_tx[df_tx["transaction_type"] == "Credit"])
         total_spend = float(df_debits["amount"].sum())
         total_credit = float(df_credits["amount"].sum())
 
@@ -54,9 +75,9 @@ class HouseholdAnalytics:
 
     @staticmethod
     def get_category_chart_data(df_tx: pd.DataFrame) -> Dict[str, Any]:
-        """Returns donut chart data for spending by category."""
+        """Returns category chart data with optional member-wise breakdown."""
         if df_tx.empty:
-            return {"labels": [], "data": [], "formatted": [], "colors": []}
+            return {"labels": [], "data": [], "formatted": [], "colors": [], "members": []}
 
         df_debits = df_tx[df_tx["transaction_type"] == "Debit"]
         target_df = df_debits if not df_debits.empty else df_tx
@@ -77,12 +98,160 @@ class HouseholdAnalytics:
             icon = row.get("category_icon") or "🏷️"
             labels.append(f"{icon} {row['category_name']}")
 
+        base_data = [round(float(row["amount"]), 2) for _, row in cat.iterrows()]
+        member_records = []
+
+        if "member_name" in target_df.columns and not target_df.empty:
+            member_totals = (
+                target_df.groupby(["member_name", "category_name"], dropna=False)["amount"]
+                .sum().reset_index()
+            )
+            member_totals = member_totals.sort_values(["member_name", "amount"], ascending=[True, False])
+
+            members = []
+            for member_name, member_df in member_totals.groupby("member_name", dropna=False):
+                ordered = []
+                member_map = {str(row["category_name"]): round(float(row["amount"]), 2) for _, row in member_df.iterrows()}
+                for category_name in cat["category_name"].tolist():
+                    ordered.append(member_map.get(str(category_name), 0.0))
+                members.append({
+                    "member_name": str(member_name),
+                    "color": palette[len(members) % len(palette)],
+                    "data": ordered,
+                    "total": round(float(sum(ordered)), 2),
+                    "total_fmt": format_inr(float(sum(ordered)))
+                })
+
+            member_records = members
+
         return {
             "labels": labels,
-            "data": [round(float(row["amount"]), 2) for _, row in cat.iterrows()],
-            "formatted": [format_inr(float(row["amount"])) for _, row in cat.iterrows()],
+            "data": base_data,
+            "formatted": [format_inr(float(value)) for value in base_data],
             "colors": palette[:len(cat)],
+            "members": member_records,
         }
+
+    @staticmethod
+    def get_member_share_chart_data(df_tx: pd.DataFrame) -> Dict[str, Any]:
+        """Returns donut chart data for spend share by family member."""
+        if df_tx.empty:
+            return {"labels": [], "data": [], "formatted": [], "colors": []}
+
+        df_debits = df_tx[df_tx["transaction_type"] == "Debit"]
+        if df_debits.empty:
+            return {"labels": [], "data": [], "formatted": [], "colors": []}
+
+        spend_by_member = (
+            df_debits.groupby("member_name", dropna=False)["amount"]
+            .sum().reset_index().sort_values("amount", ascending=False)
+        )
+
+        members_df = db.get_members()
+        member_colors = {}
+        if not members_df.empty and "member_name" in members_df.columns and "avatar_color" in members_df.columns:
+            for _, row in members_df.iterrows():
+                member_colors[str(row["member_name"])] = str(row.get("avatar_color") or "#4F8EFF")
+
+        fallback_palette = [
+            "#4F8EFF", "#00D18C", "#FFBA3B", "#FF5B7F", "#A78BFA",
+            "#38BDF8", "#FB923C", "#4ADE80", "#F472B6", "#94A3B8"
+        ]
+
+        labels = [str(row["member_name"]) for _, row in spend_by_member.iterrows()]
+        data = [round(float(row["amount"]), 2) for _, row in spend_by_member.iterrows()]
+        colors = []
+
+        for label in labels:
+            color = member_colors.get(label)
+            if not color:
+                color = fallback_palette[len(colors) % len(fallback_palette)]
+            colors.append(color)
+
+        return {
+            "labels": labels,
+            "data": data,
+            "formatted": [format_inr(float(v)) for v in data],
+            "colors": colors,
+        }
+
+    @staticmethod
+    def get_bank_share_chart_data(df_tx: pd.DataFrame) -> Dict[str, Any]:
+        """Returns donut chart data for spend share by bank."""
+        if df_tx.empty:
+            return {"labels": [], "data": [], "formatted": [], "colors": []}
+
+        df_debits = df_tx[df_tx["transaction_type"] == "Debit"]
+        if df_debits.empty:
+            return {"labels": [], "data": [], "formatted": [], "colors": []}
+
+        spend_by_bank = (
+            df_debits.groupby("bank_name", dropna=False)["amount"]
+            .sum().reset_index().sort_values("amount", ascending=False)
+        )
+
+        palette = [
+            "#4F8EFF", "#00D18C", "#FFBA3B", "#FF5B7F", "#A78BFA",
+            "#38BDF8", "#FB923C", "#4ADE80", "#F472B6", "#94A3B8"
+        ]
+
+        labels = [str(row["bank_name"]) for _, row in spend_by_bank.iterrows()]
+        data = [round(float(row["amount"]), 2) for _, row in spend_by_bank.iterrows()]
+
+        return {
+            "labels": labels,
+            "data": data,
+            "formatted": [format_inr(float(v)) for v in data],
+            "colors": palette[:len(labels)],
+        }
+
+    @staticmethod
+    def get_category_monthly_trend_data(df_tx: pd.DataFrame, top_n: int = 5) -> Dict[str, Any]:
+        """Returns monthly line chart data for the top spending categories."""
+        if df_tx is None or df_tx.empty:
+            return {"labels": [], "datasets": []}
+
+        df = df_tx.copy()
+        df["dt"] = pd.to_datetime(df["transaction_date"], errors="coerce")
+        df = df.dropna(subset=["dt"])
+        if df.empty:
+            return {"labels": [], "datasets": []}
+
+        df = df[df["transaction_type"] == "Debit"]
+        if df.empty:
+            return {"labels": [], "datasets": []}
+
+        df["month_label"] = df["dt"].dt.strftime("%b %Y")
+        df["month_sort"] = df["dt"].dt.strftime("%Y-%m")
+
+        months = df.sort_values("month_sort")["month_label"].unique().tolist()
+        category_totals = (
+            df.groupby("category_name", dropna=False)["amount"].sum().sort_values(ascending=False)
+        )
+        selected_categories = category_totals.head(top_n).index.tolist()
+
+        palette = [
+            "#4F8EFF", "#00D18C", "#FFBA3B", "#FF5B7F", "#A78BFA",
+            "#38BDF8", "#FB923C", "#4ADE80", "#F472B6", "#94A3B8"
+        ]
+
+        datasets = []
+        for idx, category_name in enumerate(selected_categories):
+            series = df[df["category_name"] == category_name].groupby("month_label")["amount"].sum()
+            values = [round(float(series.get(month, 0.0)), 2) for month in months]
+            datasets.append({
+                "label": str(category_name),
+                "data": values,
+                "borderColor": palette[idx % len(palette)],
+                "backgroundColor": palette[idx % len(palette)] + "33",
+                "pointBackgroundColor": palette[idx % len(palette)],
+                "pointRadius": 3,
+                "pointHoverRadius": 5,
+                "tension": 0.25,
+                "fill": False,
+            })
+
+        return {"labels": months, "datasets": datasets}
 
     @staticmethod
     def get_monthly_trend_data(df_tx: pd.DataFrame) -> Dict[str, Any]:
@@ -103,7 +272,7 @@ class HouseholdAnalytics:
         months_order = df_copy.sort_values("sort_key")["month"].unique().tolist()
 
         df_debits = df_copy[df_copy["transaction_type"] == "Debit"]
-        df_credits = df_copy[df_copy["transaction_type"] == "Credit"]
+        df_credits = HouseholdAnalytics._filter_out_credit_card_payments(df_copy[df_copy["transaction_type"] == "Credit"])
 
         debit_by_month = (
             df_debits.groupby("month")["amount"].sum()

@@ -36,7 +36,11 @@ def get_spending_summary(months: int = 3) -> str:
         return json.dumps({"message": "No transactions found in this period.", "total_debit": 0})
 
     df_deb = df[df["transaction_type"] == "Debit"]
-    df_cred = df[df["transaction_type"] == "Credit"]
+    df_cred = df[df["transaction_type"] == "Credit"].copy()
+    if "category_name" in df_cred.columns:
+        df_cred = df_cred[~df_cred["category_name"].fillna("").astype(str).str.lower().eq("credit card payments")]
+    if "clean_merchant" in df_cred.columns:
+        df_cred = df_cred[~df_cred["clean_merchant"].fillna("").astype(str).str.lower().str.contains(r"credit card payment|cred payment|credit card bill", regex=True, na=False)]
 
     total_debit = float(df_deb["amount"].sum())
     total_credit = float(df_cred["amount"].sum())
@@ -199,9 +203,14 @@ def get_monthly_trend(months: int = 6) -> str:
         .reset_index()
         .rename(columns={"amount": "total_debit"})
     )
+    credit_df = df[df["transaction_type"] == "Credit"].copy()
+    if "category_name" in credit_df.columns:
+        credit_df = credit_df[~credit_df["category_name"].fillna("").astype(str).str.lower().eq("credit card payments")]
+    if "clean_merchant" in credit_df.columns:
+        credit_df = credit_df[~credit_df["clean_merchant"].fillna("").astype(str).str.lower().str.contains(r"credit card payment|cred payment|credit card bill", regex=True, na=False)]
+
     credit_trend = (
-        df[df["transaction_type"] == "Credit"]
-        .groupby("month")["amount"]
+        credit_df.groupby("month")["amount"]
         .sum()
         .reset_index()
         .rename(columns={"amount": "total_credit"})

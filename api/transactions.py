@@ -15,6 +15,8 @@ async def get_transactions(
     search_text: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    sort_by: str = "date",
+    sort_dir: str = "desc",
     page: int = 1,
     page_size: int = 50,
 ):
@@ -27,7 +29,19 @@ async def get_transactions(
     if start_date: filters["start_date"] = start_date
     if end_date: filters["end_date"] = end_date
 
-    df = db.get_transactions(filters=filters if filters else None)
+    valid_sort_by = {"date", "merchant", "amount", "type", "category", "member", "bank"}
+    normalized_sort_by = sort_by.lower() if sort_by else "date"
+    normalized_sort_dir = sort_dir.lower() if sort_dir else "desc"
+    if normalized_sort_by not in valid_sort_by:
+        normalized_sort_by = "date"
+    if normalized_sort_dir not in {"asc", "desc"}:
+        normalized_sort_dir = "desc"
+
+    df = db.get_transactions(
+        filters=filters if filters else None,
+        sort_by=normalized_sort_by,
+        sort_dir=normalized_sort_dir,
+    )
     total = len(df)
     start_idx = (page - 1) * page_size
     df_page = df.iloc[start_idx: start_idx + page_size]

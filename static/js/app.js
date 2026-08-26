@@ -54,9 +54,10 @@ window.addEventListener('hashchange', routeFromHash);
   // Load settings to update sidebar status pills
   try {
     const s = await API.get('/api/settings');
-    if (s.api_key_masked) {
-      const pill = document.getElementById('api-pill');
-      if (pill) { pill.style.display = 'inline-flex'; pill.textContent = `🔑 ${s.api_key_masked}`; }
+    const pill = document.getElementById('api-pill');
+    if (pill) {
+      pill.style.display = 'none';
+      pill.textContent = '';
     }
     if (s.db_mode === 'bigquery') {
       const pill = document.getElementById('db-pill');

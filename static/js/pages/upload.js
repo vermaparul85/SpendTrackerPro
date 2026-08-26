@@ -104,9 +104,9 @@ async function renderUpload() {
               <div id="override-section" style="display:none;margin-top:10px;padding:12px;background:rgba(255,255,255,0.02);border:1px solid var(--border);border-radius:8px">
                 <div class="form-group" style="margin-bottom:10px">
                   <label style="font-size:.72rem">Select Existing Card (Optional)</label>
-                  <select id="sel-account-override" style="font-size:.82rem;padding:6px 10px;width:100%">
+                  <select id="sel-account-override" onchange="applySelectedOverrideCard()" style="font-size:.82rem;padding:6px 10px;width:100%">
                     <option value="">Auto (Create / Match from Statement)</option>
-                    ${_cardsList.map(c => `<option value="${c.account_id}" data-bank="${c.bank_code}" data-member="${c.member_id}">${c.icon||'💳'} ${c.account_name} (${c.member_name})</option>`).join('')}
+                    ${_cardsList.map(c => `<option value="${c.account_id}" data-bank="${c.bank_code}" data-member="${c.member_id}" data-name="${escapeHtml(c.account_name || '')}" data-last4="${escapeHtml(c.last4 || '')}">${c.icon||'💳'} ${escapeHtml(c.account_name)} (${escapeHtml(c.member_name)})</option>`).join('')}
                   </select>
                 </div>
                 <div class="grid-2" style="gap:10px;margin-bottom:4px">
@@ -141,11 +141,6 @@ async function renderUpload() {
         <div class="card">
           <div class="card-title">Quick Actions & Testing</div>
           <div style="display:flex;flex-direction:column;gap:12px;margin-top:8px">
-            <div style="padding:16px;background:rgba(0,209,140,0.06);border:1px solid rgba(0,209,140,0.15);border-radius:10px">
-              <div style="font-weight:600;color:var(--text-1);margin-bottom:4px">🚀 1-Click Load Sample Statements</div>
-              <div style="font-size:.82rem;color:var(--text-2);margin-bottom:12px">Generates & ingests realistic sample statements across HDFC, ICICI, SBI, and Axis Bank.</div>
-              <button class="btn btn-emerald btn-sm" id="btn-sample" onclick="loadSampleData()">Load Sample Data</button>
-            </div>
             <div style="padding:16px;background:rgba(255,91,127,0.06);border:1px solid rgba(255,91,127,0.15);border-radius:10px">
               <div style="font-weight:600;color:var(--text-1);margin-bottom:4px">🗑️ Reset Database</div>
               <div style="font-size:.82rem;color:var(--text-2);margin-bottom:12px">Clear all ingested statements & transactions for a fresh start.</div>
@@ -265,16 +260,17 @@ async function runInspection(password = null) {
     const overrideSel = document.getElementById('sel-account-override');
     if (overrideSel && res.account_id) {
       overrideSel.value = res.account_id;
-    }
-
-    // Pre-populate custom card name & last4 in override section
-    const overrideCardName = document.getElementById('override-card-name');
-    if (overrideCardName && res.account_name) {
-      overrideCardName.value = res.account_name;
-    }
-    const overrideLast4 = document.getElementById('override-card-last4');
-    if (overrideLast4 && res.last4) {
-      overrideLast4.value = res.last4;
+      applySelectedOverrideCard();
+    } else {
+      // Pre-populate custom card name & last4 in override section
+      const overrideCardName = document.getElementById('override-card-name');
+      if (overrideCardName && res.account_name) {
+        overrideCardName.value = res.account_name;
+      }
+      const overrideLast4 = document.getElementById('override-card-last4');
+      if (overrideLast4 && res.last4) {
+        overrideLast4.value = res.last4;
+      }
     }
 
   } catch (e) {
@@ -295,6 +291,29 @@ async function testUnlockPassword() {
 function togglePasswordVisibility() {
   const input = document.getElementById('statement-password');
   if (input) input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+function applySelectedOverrideCard() {
+  const sel = document.getElementById('sel-account-override');
+  const nameInput = document.getElementById('override-card-name');
+  const last4Input = document.getElementById('override-card-last4');
+  if (!sel || !nameInput || !last4Input) return;
+
+  const selected = sel.value;
+  if (!selected) {
+    const detectedName = _inspectData?.account_name || '';
+    const detectedLast4 = _inspectData?.last4 || '';
+    if (detectedName && !nameInput.value.trim()) nameInput.value = detectedName;
+    if (detectedLast4 && !last4Input.value.trim()) last4Input.value = detectedLast4;
+    return;
+  }
+
+  const opt = sel.options[sel.selectedIndex];
+  const selectedName = opt?.dataset?.name || '';
+  const selectedLast4 = opt?.dataset?.last4 || '';
+
+  if (selectedName) nameInput.value = selectedName;
+  if (selectedLast4) last4Input.value = selectedLast4;
 }
 
 function toggleOverrideSection() {
@@ -423,7 +442,7 @@ async function loadUploadHistory() {
     const memOptions = _membersList.map(m => `<option value="${m.member_id}">👤 ${escapeHtml(m.member_name)}</option>`).join('');
 
     el.innerHTML = `<table>
-      <thead><tr><th>File</th><th>Bank</th><th>Records</th><th>Debits</th><th>Household Member</th><th>Date</th></tr></thead>
+      <thead><tr><th>File</th><th>Bank</th><th>Records</th><th>Debits</th><th>Household Member</th><th>Date</th><th></th></tr></thead>
       <tbody>${stmts.map(s => `
         <tr>
           <td style="font-size:.8rem;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(s.filename)}">
@@ -438,6 +457,7 @@ async function loadUploadHistory() {
             </select>
           </td>
           <td style="font-size:.75rem;color:var(--text-3)">${s.uploaded_at?.slice(0, 10) || ''}</td>
+          <td><button class="btn btn-danger btn-sm stmt-delete" data-upload="${s.upload_id}" data-filename="${escapeHtml(s.filename)}" title="Delete statement and related transactions">🗑️</button></td>
         </tr>`).join('')}</tbody></table>`;
 
     // Set current member value and attach change handler for instant statement reassignment
@@ -453,5 +473,20 @@ async function loadUploadHistory() {
         }
       });
     });
+
+    el.querySelectorAll('.stmt-delete').forEach(btn => {
+      btn.addEventListener('click', () => deleteStatement(btn.dataset.upload, btn.dataset.filename));
+    });
   } catch {}
+}
+
+async function deleteStatement(uploadId, filename) {
+  if (!confirm(`Delete "${filename}" and all transactions from this statement?`)) return;
+  try {
+    const res = await API.delete(`/api/upload/${encodeURIComponent(uploadId)}`);
+    toast(`Deleted statement and ${res.deleted_transactions} related transactions.`, 'success');
+    loadUploadHistory();
+  } catch (e) {
+    toast('Failed to delete statement: ' + e.message, 'error');
+  }
 }

@@ -9,23 +9,20 @@ async function renderSettings() {
     <div class="page-content fade-in">
       <div class="grid-2">
         <div class="card">
-          <div class="card-title">API Configuration</div>
+          <div class="card-title">AI Configuration</div>
           <div class="form-group">
             <label>Gemini API Key</label>
-            <div style="display:flex;gap:8px">
-              <input type="password" id="s-api-key" placeholder="AIza..." style="flex:1" />
-              <button class="btn btn-secondary btn-sm" onclick="toggleKeyVisibility()">👁️</button>
-            </div>
-            <div style="font-size:.75rem;color:var(--text-3);margin-top:5px">
-              Get a free key at <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--blue)">aistudio.google.com</a>
+            <div style="padding:12px 14px;background:rgba(79,142,255,0.06);border:1px solid rgba(79,142,255,0.16);border-radius:10px;font-size:.8rem;color:var(--text-2);line-height:1.5">
+              Generate a Gemini API key from below link and store in the server environment file (.env).
+              <div style="margin-top:8px"><a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--blue)">Generate a Gemini API key</a></div>
             </div>
           </div>
           <div class="form-group">
             <label>Gemini Model</label>
             <select id="s-model">
-              <option value="gemini-2.0-flash">gemini-2.0-flash (Fast, Recommended)</option>
-              <option value="gemini-2.0-pro">gemini-2.0-pro (Most Capable)</option>
-              <option value="gemini-1.5-flash">gemini-1.5-flash (Legacy)</option>
+              <option value="gemini-3.6-flash">gemini-3.6-flash</option>
+              <option value="gemini-3.5-flash">gemini-3.5-flash</option>
+              <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
             </select>
           </div>
           <button class="btn btn-primary btn-full" onclick="saveSettings()">💾 Save Settings</button>
@@ -50,14 +47,13 @@ async function renderSettings() {
             </label>
           </div>
           <div style="margin-top:16px" id="bq-fields" style="display:none">
-            <div class="form-group"><label>GCP Project ID</label><input type="text" id="s-gcp-project" placeholder="my-gcp-project"></div>
             <div class="form-group"><label>BigQuery Dataset ID</label><input type="text" id="s-dataset-id" placeholder="spend_tracker"></div>
           </div>
           <div style="margin-top:20px;padding:14px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px">
             <div class="card-title" style="margin-bottom:8px">About SpendTracker Pro</div>
             <div style="font-size:.8rem;color:var(--text-2);line-height:1.6">
               <div>🔐 Privacy-first — all processing runs locally</div>
-              <div>🤖 ADK 2.7.1 + Gemini 2.0 Flash</div>
+              <div>🤖 ADK 2.7.1 + Gemini model selection</div>
               <div>⚡ FastAPI + Chart.js + Vanilla JS</div>
               <div>🏦 Supports HDFC, ICICI, SBI, Axis, AMEX, Kotak</div>
             </div>
@@ -69,7 +65,6 @@ async function renderSettings() {
   // Load current settings
   try {
     const s = await API.get('/api/settings');
-    if (s.api_key_masked) document.getElementById('s-api-key').placeholder = s.api_key_masked;
     const modelSel = document.getElementById('s-model');
     if (modelSel && s.gemini_model) modelSel.value = s.gemini_model;
     const modeLocal = document.getElementById('mode-local');
@@ -80,7 +75,6 @@ async function renderSettings() {
     } else if (modeLocal) {
       modeLocal.checked = true;
     }
-    if (s.gcp_project) document.getElementById('s-gcp-project').value = s.gcp_project;
     if (s.dataset_id) document.getElementById('s-dataset-id').value = s.dataset_id;
   } catch {}
 
@@ -93,30 +87,18 @@ async function renderSettings() {
   });
 }
 
-function toggleKeyVisibility() {
-  const input = document.getElementById('s-api-key');
-  if (input) input.type = input.type === 'password' ? 'text' : 'password';
-}
-
 async function saveSettings() {
   const body = {
-    api_key: document.getElementById('s-api-key').value.trim(),
     gemini_model: document.getElementById('s-model').value,
     db_mode: document.querySelector('input[name="db-mode"]:checked')?.value || 'local',
-    gcp_project: document.getElementById('s-gcp-project')?.value.trim() || '',
     dataset_id: document.getElementById('s-dataset-id')?.value.trim() || 'spend_tracker',
   };
-  if (!body.api_key) delete body.api_key; // Don't overwrite with empty
 
   try {
     await API.post('/api/settings', body);
     toast('Settings saved!', 'success');
-    // Update sidebar pills
-    if (body.api_key) {
-      const pill = document.getElementById('api-pill');
-      if (pill) { pill.style.display = 'inline-flex'; }
-    }
     const el = document.getElementById('settings-status');
     if (el) el.innerHTML = `<div class="badge badge-green">✓ Settings saved successfully</div>`;
+    renderSettings();
   } catch (e) { toast(e.message, 'error'); }
 }

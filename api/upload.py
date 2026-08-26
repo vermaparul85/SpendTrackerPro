@@ -202,6 +202,18 @@ async def reassign_statement_member(upload_id: str, body: dict):
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
+@router.delete("/{upload_id}")
+async def delete_statement(upload_id: str):
+    """Deletes one uploaded statement and its related transactions."""
+    try:
+        deleted_count = db.delete_statement(upload_id)
+        return {"success": True, "deleted_transactions": deleted_count}
+    except ValueError as e:
+        return JSONResponse(status_code=404, content={"error": str(e)})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
 
 @router.post("/sample")
 async def load_sample_data():

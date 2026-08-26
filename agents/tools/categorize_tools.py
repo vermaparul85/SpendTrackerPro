@@ -25,7 +25,7 @@ def ai_categorize_transaction(description: str, merchant: str = "") -> str:
     Uses AI to categorize a bank transaction into one of the SpendTracker categories.
     Ideal for transactions that the rule-based system cannot match.
     """
-    from config import ENV_API_KEY
+    from config import ENV_API_KEY, ENV_GEMINI_MODEL
     from categorizer import categorizer
 
     # --- Rule-based first pass ---
@@ -54,7 +54,7 @@ Respond ONLY as valid JSON with these fields:
 }}"""
 
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model=ENV_GEMINI_MODEL,
                 contents=prompt,
             )
             text = response.text.strip()

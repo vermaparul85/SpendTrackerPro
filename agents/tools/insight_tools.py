@@ -14,7 +14,7 @@ def generate_financial_insights() -> str:
     trends, and suggests actionable savings tips — all in Markdown format.
     """
     import pandas as pd
-    from config import ENV_API_KEY, format_inr
+    from config import ENV_API_KEY, ENV_GEMINI_MODEL, format_inr
     from db import db
 
     # ── Gather data ──────────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ Be specific, use the actual rupee amounts from the data, and make the tone frien
 Keep each section concise. Use bullet points where appropriate."""
 
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model=ENV_GEMINI_MODEL,
                 contents=prompt,
             )
             return response.text

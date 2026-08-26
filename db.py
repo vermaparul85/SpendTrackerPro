@@ -146,13 +146,11 @@ class SpendTrackerDB:
                     VALUES (?, ?, ?, ?)
                 """, (b["id"], b["name"], b["code"], b["icon"]))
 
-        cursor.execute("SELECT COUNT(*) FROM categories")
-        if cursor.fetchone()[0] == 0:
-            for c in DEFAULT_CATEGORIES:
-                cursor.execute("""
-                    INSERT INTO categories (category_id, category_name, category_group, icon)
-                    VALUES (?, ?, ?, ?)
-                """, (c["id"], c["name"], c["group"], c["icon"]))
+        for c in DEFAULT_CATEGORIES:
+            cursor.execute("""
+                INSERT OR IGNORE INTO categories (category_id, category_name, category_group, icon)
+                VALUES (?, ?, ?, ?)
+            """, (c["id"], c["name"], c["group"], c["icon"]))
 
         cursor.execute("SELECT COUNT(*) FROM accounts_cards")
         if cursor.fetchone()[0] == 0:
@@ -162,46 +160,47 @@ class SpendTrackerDB:
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (c["id"], c["name"], c["bank_id"], c["member_id"], c["type"], c["last4"], c["limit"]))
 
-        # Seed default merchant rules
-        cursor.execute("SELECT COUNT(*) FROM rules")
-        if cursor.fetchone()[0] == 0:
-            default_rules = [
-                ("SWIGGY", 2, "Swiggy"),
-                ("ZOMATO", 2, "Zomato"),
-                ("BLINKIT", 1, "Blinkit"),
-                ("ZEPTO", 1, "Zepto"),
-                ("BIGBASKET", 1, "BigBasket"),
-                ("AMAZON", 3, "Amazon"),
-                ("FLIPKART", 3, "Flipkart"),
-                ("MYNTRA", 3, "Myntra"),
-                ("UBER", 5, "Uber"),
-                ("OLA", 5, "Ola"),
-                ("RAPIDO", 5, "Rapido"),
-                ("BOOKMYSHOW", 7, "BookMyShow"),
-                ("NETFLIX", 7, "Netflix"),
-                ("SPOTIFY", 7, "Spotify"),
-                ("PRIME VIDEO", 7, "Amazon Prime"),
-                ("AIRTEL", 4, "Airtel"),
-                ("JIO", 4, "Jio"),
-                ("TATA POWER", 4, "Tata Power"),
-                ("BESCOM", 4, "Electricity Bill"),
-                ("CRED", 9, "CRED Payment"),
-                ("PETROL", 5, "Fuel Station"),
-                ("HPCL", 5, "HP Fuel"),
-                ("BPCL", 5, "Bharat Petroleum"),
-                ("IOCL", 5, "Indian Oil"),
-                ("DMART", 1, "D-Mart"),
-                ("APOLLO PHARMA", 8, "Apollo Pharmacy"),
-                ("PHARMEASY", 8, "PharmEasy"),
-                ("MAKEMYTRIP", 6, "MakeMyTrip"),
-                ("INDIGO", 6, "IndiGo Airlines"),
-                ("CULT FIT", 8, "Cult.fit")
-            ]
-            for kw, cat_id, clean_m in default_rules:
-                cursor.execute("""
-                    INSERT OR IGNORE INTO rules (keyword, category_id, clean_merchant)
-                    VALUES (?, ?, ?)
-                """, (kw, cat_id, clean_m))
+        # Seed default merchant rules, keeping existing data intact with IGNORE semantics.
+        default_rules = [
+            ("SWIGGY", 2, "Swiggy"),
+            ("ZOMATO", 2, "Zomato"),
+            ("BLINKIT", 1, "Blinkit"),
+            ("ZEPTO", 1, "Zepto"),
+            ("BIGBASKET", 1, "BigBasket"),
+            ("AMAZON", 3, "Amazon"),
+            ("FLIPKART", 3, "Flipkart"),
+            ("MYNTRA", 3, "Myntra"),
+            ("UBER", 5, "Uber"),
+            ("OLA", 5, "Ola"),
+            ("RAPIDO", 5, "Rapido"),
+            ("BOOKMYSHOW", 7, "BookMyShow"),
+            ("NETFLIX", 7, "Netflix"),
+            ("SPOTIFY", 7, "Spotify"),
+            ("PRIME VIDEO", 7, "Amazon Prime"),
+            ("AIRTEL", 4, "Airtel"),
+            ("JIO", 4, "Jio"),
+            ("TATA POWER", 4, "Tata Power"),
+            ("BESCOM", 4, "Electricity Bill"),
+            ("CRED", 9, "CRED Payment"),
+            ("CREDIT CARD PAYMENT", 11, "Credit Card Payment"),
+            ("CRED PAYMENT", 11, "CRED Payment"),
+            ("CREDIT CARD BILL", 11, "Credit Card Bill"),
+            ("PETROL", 5, "Fuel Station"),
+            ("HPCL", 5, "HP Fuel"),
+            ("BPCL", 5, "Bharat Petroleum"),
+            ("IOCL", 5, "Indian Oil"),
+            ("DMART", 1, "D-Mart"),
+            ("APOLLO PHARMA", 8, "Apollo Pharmacy"),
+            ("PHARMEASY", 8, "PharmEasy"),
+            ("MAKEMYTRIP", 6, "MakeMyTrip"),
+            ("INDIGO", 6, "IndiGo Airlines"),
+            ("CULT FIT", 8, "Cult.fit")
+        ]
+        for kw, cat_id, clean_m in default_rules:
+            cursor.execute("""
+                INSERT OR IGNORE INTO rules (keyword, category_id, clean_merchant)
+                VALUES (?, ?, ?)
+            """, (kw, cat_id, clean_m))
 
         conn.commit()
         conn.close()
@@ -211,7 +210,13 @@ class SpendTrackerDB:
     # -----------------------------
     def get_members(self) -> pd.DataFrame:
         conn = self.get_connection()
-        df = pd.read_sql_query("SELECT * FROM members ORDER BY member_id", conn)
+        query = """
+            SELECT m.*,
+                   (SELECT COUNT(*) FROM transactions t WHERE t.member_id = m.member_id) AS transaction_count
+            FROM members m
+            ORDER BY m.member_id
+        """
+        df = pd.read_sql_query(query, conn)
         conn.close()
         return df
 
@@ -266,7 +271,7 @@ class SpendTrackerDB:
         conn.close()
         return df
 
-    def get_transactions(self, filters: Dict[str, Any] = None) -> pd.DataFrame:
+    def get_transactions(self, filters: Dict[str, Any] = None, sort_by: str = "date", sort_dir: str = "desc") -> pd.DataFrame:
         conn = self.get_connection()
         query = """
             SELECT t.*, 
@@ -309,7 +314,18 @@ class SpendTrackerDB:
                 query += " AND t.transaction_date <= ?"
                 params.append(filters["end_date"])
 
-        query += " ORDER BY t.transaction_date DESC, t.created_at DESC"
+        sort_field_map = {
+            "date": "t.transaction_date",
+            "merchant": "t.clean_merchant",
+            "amount": "CAST(t.amount AS REAL)",
+            "type": "t.transaction_type",
+            "category": "c.category_name",
+            "member": "m.member_name",
+            "bank": "b.bank_name",
+        }
+
+        sort_field = sort_field_map.get(sort_by, "t.transaction_date")
+        query += f" ORDER BY {sort_field} {sort_dir.upper()}, t.transaction_date DESC, t.created_at DESC"
         df = pd.read_sql_query(query, conn, params=params)
         conn.close()
         return df
@@ -405,22 +421,32 @@ class SpendTrackerDB:
         conn.commit()
         conn.close()
 
-    def delete_member(self, member_id: int):
-        """
-        Deletes a household member from the database.
-        Reassigns any existing cards or transactions for this member to the remaining primary member.
-        """
+    def update_member(self, member_id: int, name: str, role: str, color: Optional[str] = None):
         conn = self.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT member_id FROM members WHERE member_id != ? LIMIT 1", (member_id,))
-        fallback_row = cursor.fetchone()
+        updates = ["member_name = ?", "role = ?"]
+        values = [name, role or "Member"]
 
-        if fallback_row:
-            fallback_id = fallback_row[0]
-            cursor.execute("UPDATE accounts_cards SET member_id = ? WHERE member_id = ?", (fallback_id, member_id))
-            cursor.execute("UPDATE transactions SET member_id = ? WHERE member_id = ?", (fallback_id, member_id))
-            cursor.execute("UPDATE statements_log SET member_id = ? WHERE member_id = ?", (fallback_id, member_id))
+        if color is not None:
+            updates.append("avatar_color = ?")
+            values.append(color)
+
+        values.append(member_id)
+        cursor.execute(f"UPDATE members SET {', '.join(updates)} WHERE member_id = ?", values)
+        conn.commit()
+        conn.close()
+
+    def delete_member(self, member_id: int):
+        """Deletes a member only when no transactions are attached to that member."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT COUNT(*) FROM transactions WHERE member_id = ?", (member_id,))
+        tx_count = cursor.fetchone()[0]
+        if tx_count > 0:
+            conn.close()
+            raise ValueError(f"Cannot delete member: {tx_count} transaction{'s are' if tx_count != 1 else ' is'} linked to this member.")
 
         cursor.execute("DELETE FROM members WHERE member_id = ?", (member_id,))
         conn.commit()
@@ -505,6 +531,21 @@ class SpendTrackerDB:
         )
         conn.commit()
         conn.close()
+
+    def delete_statement(self, upload_id: str) -> int:
+        """Deletes one statement log and all transactions belonging to it."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM transactions WHERE upload_id = ?", (upload_id,))
+        deleted_count = cursor.rowcount
+        cursor.execute("DELETE FROM statements_log WHERE upload_id = ?", (upload_id,))
+        if cursor.rowcount == 0:
+            conn.rollback()
+            conn.close()
+            raise ValueError("Statement not found")
+        conn.commit()
+        conn.close()
+        return deleted_count
 
     def reset_database(self):
         """Resets transactions and upload logs for fresh start."""

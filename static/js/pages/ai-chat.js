@@ -1,7 +1,8 @@
 // ── ai-chat.js ────────────────────────────────────────────────────────────
 let _chatSession = null;
 let _chatHistory = [];
-let _chatApiKey = '';
+let _chatApiConfigured = false;
+let _selectedModel = 'gemini-3.6-flash';
 
 function genSessionId() {
   return 'sess_' + Math.random().toString(36).slice(2);
@@ -9,10 +10,11 @@ function genSessionId() {
 
 async function renderAIChat() {
   _chatSession = _chatSession || genSessionId();
-  // Load API key from settings
+  // Check whether the backend has a configured API key in the environment
   try {
     const s = await API.get('/api/settings');
-    _chatApiKey = s.api_key || '';
+    _chatApiConfigured = Boolean(s.api_key_configured);
+    _selectedModel = s.gemini_model || 'gemini-3.6-flash';
   } catch {}
 
   const root = document.getElementById('page-root');
@@ -23,13 +25,12 @@ async function renderAIChat() {
     </div>
     <div class="page-content fade-in" style="display:flex;flex-direction:column;height:calc(100vh - 160px)">
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
-        <span class="status-pill pill-blue">🧠 gemini-2.0-flash</span>
-        ${_chatApiKey ? '<span class="status-pill pill-green">🔑 API Key Active</span>' : '<span class="status-pill pill-amber">⚠️ No API Key</span>'}
+        <span class="status-pill pill-blue">🧠 ${_selectedModel}</span>
         <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="clearChat()">🗑️ Clear Chat</button>
       </div>
-      ${!_chatApiKey ? `
+      ${!_chatApiConfigured ? `
         <div style="padding:16px;background:rgba(255,186,59,0.08);border:1px solid rgba(255,186,59,0.2);border-radius:10px;margin-bottom:16px;font-size:.875rem">
-          ⚠️ <strong>No API key set.</strong> Go to <a href="#settings" style="color:var(--blue)" onclick="navigate('settings')">Settings</a> to add your Gemini API key and unlock the AI assistant.
+          ⚠️ <strong>No Gemini API key is configured on the server.</strong> Add <code>API_KEY=your_key</code> to the project .env file and restart the app to unlock the AI assistant.
         </div>` : ''}
       <div class="quick-chips" id="quick-chips">
         ${[
@@ -95,16 +96,20 @@ function appendBubble(role, content, animate = true) {
   div.innerHTML = `
     <div class="bubble-avatar ${role === 'user' ? 'user' : 'ai'}">${role === 'user' ? '👤' : '🤖'}</div>
     <div class="bubble-content"></div>`;
+  const bubble = div.querySelector('.bubble-content');
+  if (bubble && content !== undefined && content !== null) {
+    bubble.textContent = String(content);
+  }
   msgs.appendChild(div);
   scrollChat();
-  return div.querySelector('.bubble-content');
+  return bubble;
 }
 
 async function sendChatMessage() {
   const input = document.getElementById('chat-input');
   const message = input?.value.trim();
   if (!message) return;
-  if (!_chatApiKey) { toast('Please set your Gemini API key in Settings first.', 'warning'); return; }
+  if (!_chatApiConfigured) { toast('Set API_KEY in the server .env file before using the AI assistant.', 'warning'); return; }
 
   input.value = '';
   input.style.height = 'auto';
@@ -123,7 +128,7 @@ async function sendChatMessage() {
   let fullResponse = '';
 
   API.streamChat(
-    { message, session_id: _chatSession, api_key: _chatApiKey },
+    { message, session_id: _chatSession, model_name: _selectedModel },
     chunk => {
       fullResponse += chunk;
       if (typingEl) typingEl.innerHTML = markdownToHtml(fullResponse);

@@ -26,7 +26,7 @@ from agents.tools.query_tools import (
 )
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
 _APP_NAME = "spend_tracker_ai"
 
 _SYSTEM_PROMPT = """You are **SpendTracker AI**, a friendly and knowledgeable personal finance
@@ -63,29 +63,33 @@ You have access to these tools — use them when the user asks about their spend
 # ── Singletons (created once per process) ────────────────────────────────────
 _session_service = InMemorySessionService()
 
-_agent = Agent(
-    name="spend_tracker_agent",
-    model=_GEMINI_MODEL,
-    description="SpendTracker AI — household financial assistant",
-    instruction=_SYSTEM_PROMPT,
-    tools=[
-        get_spending_summary,
-        get_category_breakdown,
-        get_merchant_history,
-        get_high_value_transactions,
-        get_member_spends,
-        get_monthly_trend,
-        ai_categorize_transaction,
-        generate_financial_insights,
-    ],
-)
+
+def _build_agent(model_name: str) -> Agent:
+    return Agent(
+        name="spend_tracker_agent",
+        model=model_name,
+        description="SpendTracker AI — household financial assistant",
+        instruction=_SYSTEM_PROMPT,
+        tools=[
+            get_spending_summary,
+            get_category_breakdown,
+            get_merchant_history,
+            get_high_value_transactions,
+            get_member_spends,
+            get_monthly_trend,
+            ai_categorize_transaction,
+            generate_financial_insights,
+        ],
+    )
 
 
-def _make_runner(api_key: str) -> Runner:
+def _make_runner(api_key: str, model_name: str | None = None) -> Runner:
     """Creates a Runner with the Gemini API key set in the environment."""
+    selected_model = model_name or os.getenv("GEMINI_MODEL", _GEMINI_MODEL)
     os.environ["GOOGLE_API_KEY"] = api_key
+    os.environ["GEMINI_MODEL"] = selected_model
     return Runner(
-        agent=_agent,
+        agent=_build_agent(selected_model),
         app_name=_APP_NAME,
         session_service=_session_service,
         auto_create_session=True,
@@ -115,7 +119,7 @@ async def _collect_chunks(runner: Runner, session_id: str, user_message: str) ->
     return chunks
 
 
-def stream_agent_response(user_message: str, session_id: str, api_key: str) -> Generator[str, None, None]:
+def stream_agent_response(user_message: str, session_id: str, api_key: str, model_name: str | None = None) -> Generator[str, None, None]:
     """
     Public API for Streamlit.
     Yields text chunks so st.write_stream can render them incrementally.
@@ -124,11 +128,12 @@ def stream_agent_response(user_message: str, session_id: str, api_key: str) -> G
         user_message: The user's natural-language query.
         session_id: A unique string per Streamlit session.
         api_key: Gemini API key (reuses the app's existing API_KEY session state).
+        model_name: Optional Gemini model override, typically from Settings.
 
     Yields:
         str chunks of the agent's response.
     """
-    runner = _make_runner(api_key)
+    runner = _make_runner(api_key, model_name=model_name)
 
     try:
         loop = asyncio.new_event_loop()

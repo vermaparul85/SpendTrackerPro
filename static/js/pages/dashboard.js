@@ -1,8 +1,9 @@
 // ── dashboard.js ─────────────────────────────────────────────────────────
 let _charts = {};
 let _activeTimeframe = 'all'; // 'all' | '90d' | '30d' | 'year' | 'custom'
-let _trendViewMode = 'member'; // 'member' | 'total'
+let _trendViewMode = 'total'; // 'member' | 'total'
 let _trendData = null;
+let _categoryData = null;
 let _highValueData = [];
 let _customStartDate = '';
 let _customEndDate = '';
@@ -81,15 +82,29 @@ async function renderDashboard() {
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
             <div class="card-title" style="margin-bottom:0">Monthly Spend Trend</div>
             <div style="display:flex;gap:3px;background:rgba(255,255,255,0.04);padding:3px;border-radius:8px;border:1px solid var(--border)">
-              <button id="btn-trend-member" class="btn btn-sm ${(_trendViewMode === 'member' ? 'btn-primary' : 'btn-secondary')}" style="padding:3px 10px;font-size:.72rem" onclick="switchTrendViewMode('member')">👥 By Member</button>
               <button id="btn-trend-total" class="btn btn-sm ${(_trendViewMode === 'total' ? 'btn-primary' : 'btn-secondary')}" style="padding:3px 10px;font-size:.72rem" onclick="switchTrendViewMode('total')">📊 Total & Credits</button>
+              <button id="btn-trend-member" class="btn btn-sm ${(_trendViewMode === 'member' ? 'btn-primary' : 'btn-secondary')}" style="padding:3px 10px;font-size:.72rem" onclick="switchTrendViewMode('member')">👥 By Family Member</button>
             </div>
           </div>
           <div class="chart-wrap" id="wrap-trend"><canvas id="chart-trend"></canvas></div>
         </div>
         <div class="card">
+          <div class="card-title">Spending Share by Family Members</div>
+          <div class="chart-wrap" id="wrap-member-share"><canvas id="chart-member-share"></canvas></div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:16px; margin-bottom:20px">
+        <div class="card-title">Spending by Category per Month</div>
+        <div class="chart-wrap" id="wrap-category-monthly"><canvas id="chart-category-monthly"></canvas></div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
           <div class="card-title">Spending by Category</div>
           <div class="chart-wrap" id="wrap-cat"><canvas id="chart-cat"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Spending by Bank</div>
+          <div class="chart-wrap" id="wrap-bank-share"><canvas id="chart-bank-share"></canvas></div>
         </div>
       </div>
       <div class="grid-2">
@@ -219,9 +234,13 @@ async function loadDashboardData() {
     }
 
     _highValueData = charts.high_value || [];
+    _categoryData = charts.category_donut || { labels: [], data: [], members: [] };
     renderKPIs(summary.metrics, summary.members);
     renderTrendChart(charts.monthly_trend);
-    renderCatChart(charts.category_donut);
+    renderMemberShareChart(charts.member_share_donut);
+    renderCategoryMonthlyChart(charts.category_monthly_line);
+    renderCatChart(_categoryData);
+    renderBankShareChart(charts.bank_share_donut);
     renderMerchants(summary.top_merchants);
     renderRecentTx(summary.recent_transactions);
   } catch (e) {
@@ -242,9 +261,9 @@ function renderKPIs(m, members) {
     </div>
     <div class="kpi-card" style="--kpi-color:#00D18C">
       <div class="kpi-icon">💳</div>
-      <div class="kpi-label">Total Credits</div>
+      <div class="kpi-label">Total Credits &amp; Refunds</div>
       <div class="kpi-value">${m.total_credit_fmt || '₹0.00'}</div>
-      <div class="kpi-sub">Refunds, deposits & payments</div>
+      <div class="kpi-sub">Credits, refunds & payments</div>
     </div>
     <div class="kpi-card" style="--kpi-color:#FFBA3B">
       <div class="kpi-icon">🏆</div>
@@ -399,6 +418,7 @@ function renderTrendChart(data) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
       plugins: {
         ...CHART_DEFAULTS.plugins,
         tooltip: {
@@ -406,7 +426,8 @@ function renderTrendChart(data) {
             label: ctx => ` ${ctx.dataset.label}: ${formatINR(ctx.parsed.y)}`,
             footer: tooltipItems => {
               if (isStacked && tooltipItems.length > 0) {
-                const totalMonth = tooltipItems.reduce((acc, item) => acc + (item.parsed.y || 0), 0);
+                const index = tooltipItems[0]?.dataIndex ?? 0;
+                const totalMonth = Array.isArray(data.debit) ? (Number(data.debit[index]) || 0) : 0;
                 return `Total Month Spend: ${formatINR(totalMonth)}`;
               }
               return '';
@@ -443,6 +464,172 @@ function switchTrendViewMode(mode) {
   }
 }
 
+function renderMemberShareChart(data) {
+  const wrap = document.getElementById('wrap-member-share');
+  if (!wrap) return;
+
+  if (!data || !data.labels || data.labels.length === 0 || data.data.every(v => v === 0)) {
+    wrap.innerHTML = `<div class="empty-state" style="padding:40px 10px"><div class="empty-icon">👨‍👩‍👧‍👦</div><p>No family spending split available.<br><span style="font-size:.78rem;color:var(--text-3)">Member spend will appear once transactions are recorded.</span></p></div>`;
+    return;
+  }
+
+  wrap.innerHTML = `<canvas id="chart-member-share"></canvas>`;
+  const ctx = document.getElementById('chart-member-share');
+  if (!ctx) return;
+
+  const softerPalette = [
+    '#4F8EFF', '#00D18C', '#FFBA3B', '#FF7A90', '#9B8CFF',
+    '#5EC8FF', '#F59E0B', '#4ADE80', '#F472B6', '#94A3B8'
+  ];
+
+  _charts.memberShare = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: data.labels,
+      datasets: [{
+        data: data.data,
+        backgroundColor: data.colors?.length ? data.colors : softerPalette,
+        borderColor: '#101827',
+        borderWidth: 2,
+        hoverOffset: 10,
+        spacing: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '58%',
+      layout: { padding: 12 },
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        legend: {
+          position: 'bottom',
+          align: 'center',
+          labels: {
+            color: '#C9D1E6',
+            boxWidth: 12,
+            boxHeight: 12,
+            padding: 14,
+            usePointStyle: true,
+            pointStyle: 'circle',
+            font: { family: 'Inter', size: 11 }
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.92)',
+          titleColor: '#F8FAFC',
+          bodyColor: '#E2E8F0',
+          padding: 10,
+          displayColors: true,
+          callbacks: {
+            label: ctx => {
+              const total = ctx.dataset.data.reduce((sum, value) => sum + Number(value || 0), 0);
+              const val = Number(ctx.parsed || 0);
+              const pct = total > 0 ? ((val / total) * 100).toFixed(1) : '0.0';
+              return ` ${ctx.label}: ${formatINR(val)} (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderCategoryMonthlyChart(data) {
+  const wrap = document.getElementById('wrap-category-monthly');
+  if (!wrap) return;
+
+  if (!data || !data.labels || data.labels.length === 0 || !data.datasets || data.datasets.length === 0) {
+    wrap.innerHTML = `<div class="empty-state" style="padding:40px 10px"><div class="empty-icon">📈</div><p>No monthly category trend available.<br><span style="font-size:.78rem;color:var(--text-3)">Category spending trend will appear once transactions are recorded.</span></p></div>`;
+    return;
+  }
+
+  wrap.innerHTML = `<canvas id="chart-category-monthly"></canvas>`;
+  const ctx = document.getElementById('chart-category-monthly');
+  if (!ctx) return;
+
+  const palette = [
+    '#4F8EFF', '#18C78C', '#FFB020', '#FF5C8A', '#8B6EF6',
+    '#2EC5FF', '#FF8D3A', '#3EDB90', '#F96AC6', '#8AA3FF'
+  ];
+
+  _charts.categoryMonthly = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.labels,
+      datasets: data.datasets.map((dataset, idx) => {
+        const color = dataset.borderColor || dataset.backgroundColor || palette[idx % palette.length];
+        return {
+          ...dataset,
+          backgroundColor: color,
+          borderColor: 'rgba(255,255,255,0.18)',
+          borderWidth: 1,
+          borderRadius: 8,
+          maxBarThickness: 100,
+          barPercentage: 1,
+          categoryPercentage: 1,
+          stack: 'monthly-category',
+        };
+      })
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        legend: {
+          position: 'bottom',
+          align: 'center',
+          labels: {
+            color: '#C9D1E6',
+            boxWidth: 12,
+            boxHeight: 12,
+            padding: 14,
+            usePointStyle: true,
+            pointStyle: 'circle',
+            font: { family: 'Inter', size: 11 }
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.92)',
+          titleColor: '#F8FAFC',
+          bodyColor: '#E2E8F0',
+          padding: 10,
+          callbacks: {
+            label: tooltipItem => {
+              const value = Number(tooltipItem.parsed.y || 0);
+              return value > 0 ? ` ${tooltipItem.dataset.label}: ${formatINR(value)}` : '';
+            },
+            footer: tooltipItems => {
+              if (!tooltipItems || tooltipItems.length === 0) return '';
+              const total = tooltipItems.reduce((sum, item) => sum + Number(item.parsed.y || 0), 0);
+              return `Total: ${formatINR(total)}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          stacked: true,
+          ticks: { color: '#8B9DC3', font: { family: 'Inter', size: 10 } },
+          grid: CHART_DEFAULTS.grid
+        },
+        y: {
+          stacked: true,
+          beginAtZero: false,
+          ticks: {
+            color: '#8B9DC3',
+            callback: value => formatLakhs(value),
+            font: { family: 'Inter', size: 10 }
+          },
+          grid: CHART_DEFAULTS.grid
+        }
+      }
+    }
+  });
+}
+
 function renderCatChart(data) {
   const wrap = document.getElementById('wrap-cat');
   if (!wrap) return;
@@ -457,30 +644,114 @@ function renderCatChart(data) {
   if (!ctx) return;
 
   _charts.cat = new Chart(ctx, {
-    type: 'doughnut',
+    type: 'bar',
     data: {
       labels: data.labels,
       datasets: [{
+        label: 'Category Spend',
         data: data.data,
-        backgroundColor: data.colors,
-        borderColor: '#0D1526',
-        borderWidth: 2,
-        hoverOffset: 8
+        backgroundColor: data.colors || ['#4F8EFF'],
+        borderColor: 'rgba(255,255,255,0.12)',
+        borderWidth: 1,
+        borderRadius: 8,
+        maxBarThickness: 28,
+        barPercentage: 0.8,
+        categoryPercentage: 0.9
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      cutout: '60%',
+      indexAxis: 'y',
       plugins: {
         ...CHART_DEFAULTS.plugins,
+        legend: { display: false },
         tooltip: {
           callbacks: {
-            label: ctx => {
-              const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-              const val = ctx.parsed;
-              const pct = total > 0 ? ((val / total) * 100).toFixed(1) : 0;
-              return ` ${ctx.label}: ${formatINR(val)} (${pct}%)`;
+            label: chartCtx => ` ${chartCtx.label}: ${formatINR(chartCtx.parsed.x ?? chartCtx.parsed)}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          grid: CHART_DEFAULTS.grid,
+          ticks: {
+            color: '#8B9DC3',
+            callback: value => formatLakhs(value),
+            font: { family: 'Inter', size: 10 }
+          }
+        },
+        y: {
+          grid: { display: false },
+          ticks: {
+            color: '#C9D1E6',
+            font: { family: 'Inter', size: 11 }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderBankShareChart(data) {
+  const wrap = document.getElementById('wrap-bank-share');
+  if (!wrap) return;
+
+  if (!data || !data.labels || data.labels.length === 0 || data.data.every(v => v === 0)) {
+    wrap.innerHTML = `<div class="empty-state" style="padding:40px 10px"><div class="empty-icon">🏦</div><p>No bank spend share available.<br><span style="font-size:.78rem;color:var(--text-3)">Bank spend will appear once transactions are recorded.</span></p></div>`;
+    return;
+  }
+
+  wrap.innerHTML = `<canvas id="chart-bank-share"></canvas>`;
+  const ctx = document.getElementById('chart-bank-share');
+  if (!ctx) return;
+
+  _charts.bankShare = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: data.labels,
+      datasets: [{
+        data: data.data,
+        backgroundColor: data.colors || ['#4F8EFF', '#00D18C', '#FFBA3B', '#FF5B7F', '#A78BFA'],
+        borderColor: '#101827',
+        borderWidth: 2,
+        hoverOffset: 8,
+        spacing: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: '58%',
+      layout: { padding: 12 },
+      plugins: {
+        ...CHART_DEFAULTS.plugins,
+        legend: {
+          position: 'bottom',
+          align: 'center',
+          labels: {
+            color: '#C9D1E6',
+            boxWidth: 12,
+            boxHeight: 12,
+            padding: 14,
+            usePointStyle: true,
+            pointStyle: 'circle',
+            font: { family: 'Inter', size: 11 }
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.92)',
+          titleColor: '#F8FAFC',
+          bodyColor: '#E2E8F0',
+          padding: 10,
+          displayColors: true,
+          callbacks: {
+            label: chartCtx => {
+              const total = chartCtx.dataset.data.reduce((sum, value) => sum + Number(value || 0), 0);
+              const val = Number(chartCtx.parsed || 0);
+              const pct = total > 0 ? ((val / total) * 100).toFixed(1) : '0.0';
+              return ` ${chartCtx.label}: ${formatINR(val)} (${pct}%)`;
             }
           }
         }
