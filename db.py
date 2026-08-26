@@ -5,7 +5,7 @@ from typing import List, Dict, Tuple, Optional, Any
 from datetime import datetime
 from config import DEFAULT_MEMBERS, DEFAULT_BANKS, DEFAULT_CATEGORIES, DEFAULT_CARDS
 
-DB_FILE = os.path.join(os.path.dirname(__file__), "spend_tracker.db")
+DB_FILE = os.getenv("DB_PATH", os.path.join(os.path.dirname(__file__), "spend_tracker.db"))
 
 class SpendTrackerDB:
     def __init__(self, mode: str = "local", gcp_project: str = "", dataset_id: str = "spend_tracker"):
