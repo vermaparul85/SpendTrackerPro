@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpendTracker Pro - Simplified Architecture Diagram</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #ffffff;
+      color: #1e293b;
+      margin: 0;
+      padding: 40px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 {
+      margin-bottom: 8px;
+      color: #0f172a;
+      font-size: 28px;
+    }
+    p {
+      color: #64748b;
+      margin-bottom: 30px;
+      font-size: 16px;
+    }
+    .container {
+      background: #ffffff;
+      padding: 30px;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      max-width: 1000px;
+      width: 100%;
+      overflow-x: auto;
+    }
+    .mermaid {
+      display: flex;
+      justify-content: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>SpendTracker Pro - High-Level Architecture</h1>
+  <p>Simplified System Flow: Frontend &rarr; FastAPI Backend &rarr; Gemini AI &rarr; Database</p>
+  
+  <div class="container">
+    <pre class="mermaid">
+graph LR
+    subgraph Client ["Frontend"]
+        UI["Web Browser<br/>(Dashboard & Charts)"]
+    end
+
+    subgraph Backend ["Application Layer (Cloud Run)"]
+        API["FastAPI Web Server"]
+        Parser["Statement Parser & Rules"]
+    end
+
+    subgraph AI ["AI Services"]
+        Gemini["Google Gemini AI<br/>(Advisory & Categorization)"]
+    end
+
+    subgraph Data ["Data Storage"]
+        DB[("Database<br/>SQLite / BigQuery")]
+    end
+
+    UI -->|Upload & View Data| API
+    API -->|Extract Transactions| Parser
+    API -->|AI Insights| Gemini
+    API -->|Read & Write| DB
+    Parser -->|Store Data| DB
+    </pre>
+  </div>
+
+  <script>
+    mermaid.initialize({ startOnLoad: true, theme: 'default' });
+  </script>
+</body>
+</html>
